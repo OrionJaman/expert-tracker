@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>60 Days Expert Tracker</title>
+<style>
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    max-width: 720px;
+    margin: 20px auto;
+    background: #f9fbfc;
+    color: #222;
+    padding: 10px;
+  }
+  h1 {
+    text-align: center;
+    margin-bottom: 1rem;
+    color: #005f99;
+  }
+  form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    margin-bottom: 1.5rem;
+  }
+  input[type="date"],
+  input[type="number"] {
+    flex: 1 1 180px;
+    padding: 10px;
+    font-size: 1rem;
+    border-radius: 6px;
+    border: 1px solid #bbb;
+    transition: border-color 0.3s ease;
+  }
+  input[type="date"]:focus,
+  input[type="number"]:focus {
+    border-color: #005f99;
+    outline: none;
+  }
+  button {
+    background: #007acc;
+    border: none;
+    color: white;
+    padding: 10px 24px;
+    font-size: 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    flex: 0 0 auto;
+    transition: background 0.3s ease;
+  }
+  button:hover {
+    background: #005f99;
+  }
+  #chart-container {
+    width: 100%;
+    height: 320px;
+    margin-bottom: 2rem;
+    background: white;
+    border-radius: 8px;
+    padding: 12px;
+    box-shadow: 0 2px 8px rgb(0 0 0 / 0.1);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgb(0 0 0 / 0.1);
+  }
+  thead {
+    background: #007acc;
+    color: white;
+  }
+  th, td {
+    padding: 12px 15px;
+    text-align: center;
+    border-bottom: 1px solid #ddd;
+  }
+  tbody tr:hover {
+    background: #f1f9ff;
+  }
+  #actions {
+    margin-top: 15px;
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+  }
+  #actions button {
+    background: #28a745;
+    flex: 0 0 auto;
+    border: none;
+    color: white;
+    padding: 10px 18px;
+    font-size: 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+  }
+  #actions button.export {
+    background: #17a2b8;
+  }
+  #actions button.import {
+    background: #ffc107;
+    color: #222;
+  }
+  #actions button:hover {
+    opacity: 0.85;
+  }
+  #importFile {
+    display: none;
+  }
+  @media(max-width: 480px) {
+    form {
+      flex-direction: column;
+      gap: 15px;
+    }
+    input[type="date"], input[type="number"], button {
+      flex: 1 1 100%;
+    }
+  }
+</style>
+</head>
+<body>
+
+<h1>60 Days Expert Tracker</h1>
+
+<form id="entryForm">
+  <input type="date" id="date" required />
+  <input type="number" id="problemsSolved" min="0" placeholder="Problems Solved" required />
+  <input type="number" id="ratingChange" placeholder="Rating Change (optional)" />
+  <button type="submit">Add / Update Entry</button>
+</form>
+
+<div id="chart-container">
+  <canvas id="progressChart"></canvas>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Date</th>
+      <th>Problems Solved</th>
+      <th>Rating Change</th>
+    </tr>
+  </thead>
+  <tbody id="entriesTableBody"></tbody>
+</table>
+
+<div id="actions">
+  <button class="export" id="exportBtn">Export CSV</button>
+  <button class="import" id="importBtn">Import CSV</button>
+  <input type="file" id="importFile" accept=".csv" />
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const STORAGE_KEY = 'expertTrackerData';
+
+  const form = document.getElementById('entryForm');
+  const dateInput = document.getElementById('date');
+  const problemsInput = document.getElementById('problemsSolved');
+  const ratingInput = document.getElementById('ratingChange');
+  const tableBody = document.getElementById('entriesTableBody');
+  const ctx = document.getElementById('progressChart').getContext('2d');
+  const exportBtn = document.getElementById('exportBtn');
+  const importBtn = document.getElementById('importBtn');
+  const importFile = document.getElementById('importFile');
+
+  let data = [];
+
+  function loadData() {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      data = JSON.parse(saved);
+    }
+  }
+
+  function saveData() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }
+
+  function renderTable() {
+    tableBody.innerHTML = '';
+    data.forEach(({ date, problemsSolved, ratingChange }) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${date}</td><td>${problemsSolved}</td><td>${ratingChange}</td>`;
+      tableBody.appendChild(tr);
+    });
+  }
+
+  function getChartData() {
+    data.sort((a,b) => new Date(a.date) - new Date(b.date));
+
+    const labels = data.map(d => d.date);
+    const problemsData = data.map(d => d.problemsSolved);
+    const ratingData = data.map(d => d.ratingChange);
+
+    const cumulativeProblems = problemsData.reduce((acc, cur, i) => {
+      acc.push((acc[i-1] || 0) + cur);
+      return acc;
+    }, []);
+
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'Problems Solved',
+          data: problemsData,
+          borderColor: '#007acc',
+          backgroundColor: '#007acc66',
+          fill: true,
+          tension: 0.3
+        },
+        {
+          label: 'Rating Change',
+          data: ratingData,
+          borderColor: '#28a745',
+          backgroundColor: '#28a74566',
+          fill: true,
+          tension: 0.3
+        },
+        {
+          label: 'Cumulative Problems Solved',
+          data: cumulativeProblems,
+          borderColor: '#dc3545',
+          backgroundColor: '#dc354566',
+          fill: true,
+          tension: 0.3
+        }
+      ]
+    };
+  }
+
+  let chart;
+
+  function renderChart() {
+    const chartData = getChartData();
+
+    if (chart) {
+      chart.data = chartData;
+      chart.update();
+    } else {
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: chartData,
+        options: {
+          responsive: true,
+          interaction: {
+            mode: 'nearest',
+            intersect: false,
+          },
+          plugins: {
+            tooltip: {
+              mode: 'index',
+              intersect: false,
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true
+            }
+          }
+        }
+      });
+    }
+  }
+
+  function addOrUpdateEntry(entry) {
+    const index = data.findIndex(e => e.date === entry.date);
+    if (index >= 0) data[index] = entry;
+    else data.push(entry);
+  }
+
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+
+    const entry = {
+      date: dateInput.value,
+      problemsSolved: parseInt(problemsInput.value),
+      ratingChange: ratingInput.value ? parseInt(ratingInput.value) : 0,
+    };
+
+    if (!entry.date || isNaN(entry.problemsSolved)) {
+      alert('Please enter a valid date and problems solved.');
+      return;
+    }
+
+    addOrUpdateEntry(entry);
+    saveData();
+    renderTable();
+    renderChart();
+    form.reset();
+  });
+
+  // CSV export helper
+  function exportToCSV() {
+    if (!data.length) {
+      alert('No data to export.');
+      return;
+    }
+    const header = ['date', 'problemsSolved', 'ratingChange'];
+    const rows = data.map(d => [d.date, d.problemsSolved, d.ratingChange]);
+    let csvContent = header.join(',') + '\n';
+    rows.forEach(r => {
+      csvContent += r.join(',') + '\n';
+    });
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'expert_tracker_data.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // CSV import helper
+  function importFromCSV(file) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const text = e.target.result;
+      const lines = text.trim().split('\n');
+      const newData = [];
+      for(let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(',');
+        if(cols.length < 2) continue;
+        const date = cols[0].trim();
+        const problemsSolved = parseInt(cols[1]);
+        const ratingChange = cols.length > 2 ? parseInt(cols[2]) : 0;
+        if (!date || isNaN(problemsSolved)) continue;
+        newData.push({
+          date,
+          problemsSolved,
+          ratingChange: isNaN(ratingChange) ? 0 : ratingChange
+        });
+      }
+      if(newData.length === 0) {
+        alert('No valid data found in CSV.');
+        return;
+      }
+      // Merge imported data (overwrite if same date)
+      newData.forEach(entry => addOrUpdateEntry(entry));
+      saveData();
+      renderTable();
+      renderChart();
+      alert('Import successful!');
+    };
+    reader.readAsText(file);
+  }
+expert-trackerexpert-tracker
+  exportBtn.addEventListener('click', exportToCSV);
+
+  importBtn.addEventListener('click', () => importFile.click());
+
+  importFile.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    importFromCSV(file);
+    importFile.value = ''; // reset file input
+  });
+
+  // Initialize
+  loadData();
+  renderTable();
+  renderChart();
+</script>
+
+</body>
+</html>
